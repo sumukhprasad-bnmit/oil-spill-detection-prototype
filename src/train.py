@@ -60,7 +60,7 @@ optimizer = Adam(
 
 
 # training
-epochs = 1
+epochs = 20
 
 best_dice = 0.0
 
