@@ -46,46 +46,44 @@ class UNet(nn.Module):
 		super().__init__()
 
 		# encoding
-		self.enc1 = DoubleConv(in_channels, 64)
-		self.enc2 = DoubleConv(64, 128)
-		self.enc3 = DoubleConv(128, 256)
-		self.enc4 = DoubleConv(256, 512)
+		self.enc1 = DoubleConv(in_channels, 32)
+		self.enc2 = DoubleConv(32, 64)
+		self.enc3 = DoubleConv(64, 128)
+		self.enc4 = DoubleConv(128, 256)
 
-		self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+		self.pool = nn.MaxPool2d(2)
 
 		# bottleneck
-		self.bottleneck = DoubleConv(512, 1024)
+		self.bottleneck = DoubleConv(256, 512)
 
 		# decoding
 		self.up4 = nn.ConvTranspose2d(
-			1024, 512, kernel_size=2, stride=2
-		)
-		self.dec4 = DoubleConv(1024, 512)
-
-		self.up3 = nn.ConvTranspose2d(
 			512, 256, kernel_size=2, stride=2
 		)
-		self.dec3 = DoubleConv(512, 256)
+		self.dec4 = DoubleConv(512, 256)
 
-		self.up2 = nn.ConvTranspose2d(
+		self.up3 = nn.ConvTranspose2d(
 			256, 128, kernel_size=2, stride=2
 		)
-		self.dec2 = DoubleConv(256, 128)
+		self.dec3 = DoubleConv(256, 128)
 
-		self.up1 = nn.ConvTranspose2d(
+		self.up2 = nn.ConvTranspose2d(
 			128, 64, kernel_size=2, stride=2
 		)
-		self.dec1 = DoubleConv(128, 64)
+		self.dec2 = DoubleConv(128, 64)
 
-		# final 1x1 convolution
+		self.up1 = nn.ConvTranspose2d(
+			64, 32, kernel_size=2, stride=2
+		)
+		self.dec1 = DoubleConv(64, 32)
+
 		self.output = nn.Conv2d(
-			64,
+			32,
 			out_channels,
 			kernel_size=1,
 		)
 
 	def forward(self, x):
-
 		# encoding
 		e1 = self.enc1(x)
 		e2 = self.enc2(self.pool(e1))
