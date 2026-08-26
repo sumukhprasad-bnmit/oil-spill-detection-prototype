@@ -41,7 +41,7 @@ class OilSpillDataset(Dataset):
 		mask = (mask >= 128).astype(np.float32)
 
 		# Add channel dimension:
-		# [H, W] → [1, H, W]
+		# [H, W] --> [1, H, W]
 		image = torch.from_numpy(image).unsqueeze(0)
 		mask = torch.from_numpy(mask).unsqueeze(0)
 
