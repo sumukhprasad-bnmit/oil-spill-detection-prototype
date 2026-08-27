@@ -8,6 +8,12 @@ import torch
 from flask import Flask, jsonify, render_template_string, request
 from PIL import Image
 
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 # Make sure "src" (sibling of this file) is importable, same as the notebook does
 # with sys.path.append(str(Path.cwd().parent)) — here we just add our own directory.
 sys.path.append(str(Path(__file__).resolve().parent))
@@ -90,98 +96,39 @@ def array_to_base64_png(array, is_bool=False):
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{encoded}"
 
+def create_overlay_image(image, prediction):
+    fig, ax = plt.subplots(figsize=(image.shape[1] / 100, image.shape[0] / 100))
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oil Spill Detection Dashboard</title>
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 700px; margin: 50px auto; padding: 20px; line-height: 1.6; background: #f9f9f9; }
-        .card { border: 1px solid #ddd; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; }
-        input[type="file"] { margin: 20px 0; display: block; width: 100%; }
-        button { background: #0070f3; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 500; width: 100%; }
-        button:hover { background: #0051a8; }
-        .status { margin-top: 20px; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
-        .status.error { color: #d33; }
-        .status.ok { color: #0a0; }
-        .results { display: none; margin-top: 25px; }
-        .results.visible { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .results img { width: 100%; border-radius: 8px; border: 1px solid #ddd; }
-        .results figcaption { text-align: center; font-size: 13px; color: #555; margin-top: 6px; }
-        .spill-pct { margin-top: 15px; font-size: 15px; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <center><h2>Oil Spill Detection</h2></center>
-        <p>Upload a grayscale SAR .png image. It will be run through the UNet model to detect oil spill regions.</p>
+    # request image
+    ax.imshow(image)
 
-        <form id="uploadForm">
-            <input type="file" name="image" accept="image/png" required>
-            <button type="submit">Upload and Predict</button>
-        </form>
+    # prediction mask overlay
+    ax.imshow(
+        prediction,
+        alpha=0.45,
+    )
 
-        <div id="statusBox" class="status"></div>
+    ax.axis("off")
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
-        <div id="results" class="results">
-            <figure>
-                <img id="probabilityImg" alt="Probability map">
-                <figcaption>Probability</figcaption>
-            </figure>
-            <figure>
-                <img id="predictionImg" alt="Predicted mask">
-                <figcaption>Predicted</figcaption>
-            </figure>
-        </div>
-        <div id="spillPct" class="spill-pct"></div>
-    </div>
+    buffer = io.BytesIO()
+    fig.savefig(
+        buffer,
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0,
+        transparent=False,
+    )
+    plt.close(fig)
 
-    <script>
-        document.getElementById('uploadForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const statusBox = document.getElementById('statusBox');
-            const results = document.getElementById('results');
-            const spillPct = document.getElementById('spillPct');
-
-            results.classList.remove('visible');
-            spillPct.textContent = '';
-            statusBox.className = 'status';
-            statusBox.textContent = 'Processing...';
-
-            try {
-                const res = await fetch('/predict', { method: 'POST', body: formData });
-                const data = await res.json();
-
-                if (!res.ok) {
-                    statusBox.className = 'status error';
-                    statusBox.textContent = 'Error: ' + (data.error || 'Unknown error');
-                    return;
-                }
-
-                document.getElementById('probabilityImg').src = data.probability_image;
-                document.getElementById('predictionImg').src = data.prediction_image;
-                spillPct.textContent = `Predicted spill coverage: ${data.spill_percentage.toFixed(2)}%`;
-
-                results.classList.add('visible');
-                statusBox.className = 'status ok';
-                statusBox.textContent = 'Done.';
-            } catch (err) {
-                statusBox.className = 'status error';
-                statusBox.textContent = 'Error: ' + err.message;
-            }
-        };
-    </script>
-</body>
-</html>
-"""
+    buffer.seek(0)
+    return "data:image/png;base64,"+base64.b64encode(buffer.read()).decode("utf-8")
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return render_template_string(HTML_TEMPLATE)
+    with open("template.html") as f:
+        return render_template_string(f.read())
 
 
 @app.route("/predict", methods=["POST"])
@@ -194,6 +141,12 @@ def predict_route():
         return jsonify({"error": "Empty filename"}), 400
 
     try:
+        image_file.stream.seek(0)
+        original_image = Image.open(image_file.stream).convert("RGB")
+        original_image = np.array(original_image)
+	   
+        # reset stream because preprocess_image will read it
+        image_file.stream.seek(0)
         image_tensor = preprocess_image(image_file.stream)
 
         probability, prediction = predict(
@@ -203,14 +156,19 @@ def predict_route():
         )
 
         spill_percentage = float(prediction.mean()) * 100.0
+	   
+        overlay_image = create_overlay_image(original_image, prediction)
+        image_file.stream.seek(0)
 
         return (
             jsonify(
                 {
                     "status": "Success",
                     "spill_percentage": spill_percentage,
+                    "original_image": "data:image/png;base64,"+base64.b64encode(image_file.read()).decode("utf-8"),
                     "probability_image": array_to_base64_png(probability, is_bool=False),
                     "prediction_image": array_to_base64_png(prediction, is_bool=True),
+                    "overlay_image": overlay_image,
                 }
             ),
             200,
