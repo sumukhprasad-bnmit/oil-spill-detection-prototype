@@ -4,26 +4,17 @@ import numpy as np
 
 def mask_to_polygons(
     mask,
-    min_area=20,
+    min_area=100,
     approximation_epsilon=0.001,
 ):
     """
-    Convert a binary segmentation mask into polygons.
+    Convert a binary segmentation mask into polygon regions.
 
-    Args:
-        mask:
-            Binary numpy array [H, W].
-
-        min_area:
-            Ignore connected regions smaller than this
-            many pixels.
-
-        approximation_epsilon:
-            Controls polygon simplification.
-
-    Returns:
-        List of polygons, where each polygon is an
-        Nx2 numpy array containing (x, y) coordinates.
+    Returns a list of dictionaries containing:
+        polygon
+        area
+        perimeter
+        bbox
     """
 
     mask_uint8 = (
@@ -36,7 +27,7 @@ def mask_to_polygons(
         cv2.CHAIN_APPROX_SIMPLE,
     )
 
-    polygons = []
+    regions = []
 
     for contour in contours:
 
@@ -55,17 +46,27 @@ def mask_to_polygons(
             * perimeter
         )
 
-        approximated = cv2.approxPolyDP(
+        polygon = cv2.approxPolyDP(
             contour,
             epsilon,
             closed=True,
         )
 
-        polygon = (
-            approximated
-            .reshape(-1, 2)
-        )
+        polygon = polygon.reshape(-1, 2)
 
-        polygons.append(polygon)
+        x, y, w, h = cv2.boundingRect(contour)
 
-    return polygons
+        regions.append({
+            "polygon": polygon,
+            "area": float(area),
+            "perimeter": float(perimeter),
+            "bbox": (x, y, w, h),
+        })
+
+    # largest regions first
+    regions.sort(
+        key=lambda x: x["area"],
+        reverse=True,
+    )
+
+    return regions
