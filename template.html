@@ -1,95 +1,204 @@
-
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oil Spill Detection Dashboard</title>
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 700px; margin: 50px auto; padding: 20px; line-height: 1.6; background: #f9f9f9; }
-        .card { border: 1px solid #ddd; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; }
-        input[type="file"] { margin: 20px 0; display: block; width: 100%; }
-        button { background: #0070f3; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 500; width: 100%; }
-        button:hover { background: #0051a8; }
-        .status { margin-top: 20px; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
-        .status.error { color: #d33; }
-        .status.ok { color: #0a0; }
-        .results { display: none; margin-top: 25px; }
-        .results.visible { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .results img { width: 100%; border-radius: 8px; border: 1px solid #ddd; }
-        .results figcaption { text-align: center; font-size: 13px; color: #555; margin-top: 6px; }
-        .spill-pct { margin-top: 15px; font-size: 15px; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <center><h2>Oil Spill Detection</h2></center>
-        <p>Upload a grayscale SAR .png image. It will be run through the UNet model to detect oil spill regions.</p>
+	<head>
+		<meta charset="utf-8" content="width=device-width, initial-scale=1.0">
+		<title>
+			Oil Spill Detection Dashboard
+		</title>
+		<style>
+			* {
+				font-family: myriad pro, lucida grande, verdana, system-ui, sans-serif;
+			}
+			body {
+				max-width: 700px;
+				margin: 50px auto;
+				padding: 20px;
+				line-height: 1.6;
+				background: #eee;
+			}
 
-        <form id="uploadForm">
-            <input type="file" name="image" accept="image/png" required>
-            <button type="submit">Upload and Predict</button>
-        </form>
+			.card {
+				border: 1px solid #aaa;
+				padding: 25px;
+				box-shadow: 0 4px 4px rgba(0,0,0,0.3);
+				background: white;
+			}
 
-        <div id="statusBox" class="status"></div>
 
-        <div id="results" class="results">
-            <figure>
-                <img id="originalImg" alt="Probability map">
-                <figcaption>Original</figcaption>
-            </figure>
-            <figure>
-                <img id="probabilityImg" alt="Probability map">
-                <figcaption>Probability</figcaption>
-            </figure>
-            <figure>
-                <img id="predictionImg" alt="Predicted mask">
-                <figcaption>Predicted (BOOL)</figcaption>
-            </figure>
-            <figure>
-                <img id="overlayImg" alt="Overlay image">
-                <figcaption>Predicted (Overlay)</figcaption>
-            </figure>
-        </div>
-        <div id="spillPct" class="spill-pct"></div>
-    </div>
+			.form {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
 
-    <script>
-        document.getElementById('uploadForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const statusBox = document.getElementById('statusBox');
-            const results = document.getElementById('results');
-            const spillPct = document.getElementById('spillPct');
+			input[type="file"] {
+				margin: 20px 0;
+				display: block;
+			}
 
-            results.classList.remove('visible');
-            spillPct.textContent = '';
-            statusBox.className = 'status';
-            statusBox.textContent = 'Processing...';
+			button, input[type=submit], input[type=reset], input[type=button] {
+				display: block;
+				font-weight: bold;
+				height: fit-content;
+				background-repeat: repeat-x;
+				background-image: linear-gradient(#5d7e96, #091E43);
+				color: white;
+				text-shadow: 0px 1px rgba(0, 0, 0, 0.75) !important;
+				border: 1px solid #091E43 !important;
+				border-radius: 20px;
+				padding: 5px 10px;
+			}
 
-            try {
-                const res = await fetch('/predict', { method: 'POST', body: formData });
-                const data = await res.json();
+			button:hover, input[type=button]:hover {
+				background-image: linear-gradient(#455f72, #040F23);
+				color: rgba(255, 255, 255, 0.9);
+				box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+			}
 
-                if (!res.ok) {
-                    statusBox.className = 'status error';
-                    statusBox.textContent = 'Error: ' + (data.error || 'Unknown error');
-                    return;
-                }
+			button:active, input[type=button]:active {
+				background-image: linear-gradient(#040F23, #455f72);
+				color: rgba(255, 255, 255, 0.8);
+				box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.3), inset 0 1px 3px rgba(0, 0, 0, 0.4);
+			}
 
-                document.getElementById('originalImg').src = data.original_image;
-                document.getElementById('probabilityImg').src = data.probability_image;
-                document.getElementById('predictionImg').src = data.prediction_image;
-                document.getElementById('overlayImg').src = data.overlay_image;
-                spillPct.textContent = `Predicted spill coverage: ${data.spill_percentage.toFixed(2)}%`;
+			.status {
+				margin-top: 20px;
+				font-size: 13px;
+				white-space: pre-wrap;
+				opacity: 0.4;
+			}
+			
+			.status-text {
+				font-family: monospace !important;
+			}
 
-                results.classList.add('visible');
-                statusBox.className = 'status ok';
-                statusBox.textContent = 'Done.';
-            } catch (err) {
-                statusBox.className = 'status error';
-                statusBox.textContent = 'Error: ' + err.message;
-            }
-        };
-    </script>
-</body>
+			.status-text.error {
+				color: #d33;
+			}
+
+			.status-text.ok {
+				color: #0a0;
+			}
+
+			.results {
+				display: none;
+				margin-top: 25px;
+			}
+
+			.results.visible {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 15px;
+			}
+
+			.results img {
+				width: 100%;
+				border-radius: 4px;
+				border: 1px solid #aaa;
+				box-shadow: 0 2px 2px rgba(0,0,0,0.3);
+			}
+
+			.results figcaption {
+				text-align: center;
+				font-size: 13px;
+				font-weight: bold;
+				color: #555;
+				margin-top: 6px;
+			}
+
+			.spill-pct {
+				margin-top: 15px;
+				font-size: 15px;
+				text-align: center;
+			}
+			
+			hr {
+				opacity: 0.4;
+				border-color: #000;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="card">
+			<h2>
+				Oil Spill Detection
+			</h2>
+			<p>
+				Upload a grayscale SAR .png image. It will be run through the UNet model to detect oil spill regions.
+			</p>
+			<form id="uploadForm" name="uploadForm">
+				<div class="form">
+					<input type="file" name="image" accept="image/png" required=""> <button type="submit">Upload and Predict</button>
+				</div>
+			</form>
+			<div id="results" class="results">
+				<figure>
+					<img id="originalImg" alt="Probability map">
+					<figcaption>
+						Original
+					</figcaption>
+				</figure>
+				<figure>
+					<img id="probabilityImg" alt="Probability map">
+					<figcaption>
+						Probability
+					</figcaption>
+				</figure>
+				<figure>
+					<img id="predictionImg" alt="Predicted mask">
+					<figcaption>
+						Predicted (BOOL)
+					</figcaption>
+				</figure>
+				<figure>
+					<img id="overlayImg" alt="Overlay image">
+					<figcaption>
+						Predicted (Overlay)
+					</figcaption>
+				</figure>
+			</div>
+			<div id="spillPct" class="spill-pct"></div>
+			
+			<hr>
+
+			<div class="status"><b>STATUS:</b>  <span id="statusBox" class="status-text">Waiting for upload...</span></div>
+		</div>
+		<script>
+		document.getElementById('uploadForm').onsubmit = async (e) => {
+		  e.preventDefault();
+		  const formData = new FormData(e.target);
+		  const statusBox = document.getElementById('statusBox');
+		  const results = document.getElementById('results');
+		  const spillPct = document.getElementById('spillPct');
+
+		  results.classList.remove('visible');
+		  spillPct.textContent = 'status-text';
+		  statusBox.textContent = 'Processing...';
+
+		  try {
+		      const res = await fetch('/predict', { method: 'POST', body: formData });
+		      const data = await res.json();
+
+		      if (!res.ok) {
+		          statusBox.className = 'status-text error';
+		          statusBox.textContent = 'Error: ' + (data.error || 'Unknown error');
+		          return;
+		      }
+
+		      document.getElementById('originalImg').src = data.original_image;
+		      document.getElementById('probabilityImg').src = data.probability_image;
+		      document.getElementById('predictionImg').src = data.prediction_image;
+		      document.getElementById('overlayImg').src = data.overlay_image;
+		      spillPct.textContent = `Predicted spill coverage: ${data.spill_percentage.toFixed(2)}%`;
+
+		      results.classList.add('visible');
+		      statusBox.className = 'status-text ok';
+		      statusBox.textContent = 'Done.';
+		  } catch (err) {
+		      statusBox.className = 'status error';
+		      statusBox.textContent = 'Error: ' + err.message;
+		  }
+		};
+		</script>
+	</body>
 </html>
